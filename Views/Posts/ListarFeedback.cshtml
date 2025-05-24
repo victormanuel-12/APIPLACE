@@ -1,0 +1,42 @@
+@model IEnumerable<PC3.Models.Feedback>
+
+@{
+    ViewData["Title"] = "Lista de Feedbacks";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.Any())
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>User ID</th>
+                <th>Email</th>
+                <th>Post ID</th>
+                <th>Sentimiento</th>
+                <th>Fecha</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td>@Html.DisplayFor(modelItem => item.Id)</td>
+                    <td>@Html.DisplayFor(modelItem => item.userId)</td>
+                    <td>@Html.DisplayFor(modelItem => item.email)</td>
+                    <td>@Html.DisplayFor(modelItem => item.PostId)</td>
+                    <td>@Html.DisplayFor(modelItem => item.Sentimiento)</td>
+                    <td>@Html.DisplayFor(modelItem => item.Fecha)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <div class="alert alert-info" role="alert">
+        No hay ningún feedback registrado.
+    </div>
+}
