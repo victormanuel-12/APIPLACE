@@ -10,10 +10,11 @@ using PC3.Services;
 using Microsoft.AspNetCore.Identity;
 using PC3.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
+
 namespace PC3.Controllers
 {
-
-
   public class PostsController : Controller
   {
     private readonly IJsonPlaceholderService _jsonService;
@@ -33,15 +34,30 @@ namespace PC3.Controllers
       _context = context;
     }
 
-
+    [AllowAnonymous]
     public async Task<IActionResult> Index()
     {
-      var posts = await _jsonService.GetPostsAsync();
-      return View(posts);
+      try
+      {
+        var posts = await _jsonService.GetPostsAsync();
+        return View(posts);
+      }
+      catch (Exception ex)
+      {
+        _logger.LogError(ex, "Error al obtener la lista de posts");
+        return View("Error");
+      }
     }
 
+    [AllowAnonymous]
     public async Task<IActionResult> Details(int id)
     {
+      if (id <= 0)
+      {
+        _logger.LogWarning($"ID de post inválido: {id}");
+        return BadRequest("ID de post inválido");
+      }
+
       _logger.LogInformation($"Obteniendo post con id: {id}");
 
       try
@@ -50,32 +66,51 @@ namespace PC3.Controllers
         if (post == null)
         {
           _logger.LogWarning($"No se encontró el post con id: {id}");
-          return NotFound();
+          return NotFound($"No se encontró el post con ID {id}");
         }
 
         var user = await _jsonService.GetUserAsync(post.userId);
-        if (user == null)
-        {
-          _logger.LogWarning($"No se encontró el usuario con id: {post.userId}");
-          return NotFound();
-        }
+
 
         var comments = await _jsonService.GetCommentsForPostAsync(id) ?? new List<Comment>();
         _logger.LogInformation($"Encontrados {comments.Count} comentarios para post {id}");
-        var currentUser = await _userManager.GetUserAsync(User);
-        var currentUserId = currentUser?.Id;
-        var currentUserEmail = currentUser?.Email;
 
-        // Obtener feedback existente para este post y usuario
-        var feedback = currentUser != null
-            ? await _context.Feedbacks
-                .FirstOrDefaultAsync(f => f.PostId == id && f.userId == currentUserId)
-            : null;
+        // Manejo seguro del usuario actual
+        string currentUserId = null;
+        string currentUserEmail = null;
+        Feedback feedback = null;
+
+        if (User.Identity.IsAuthenticated)
+        {
+          try
+          {
+            var currentUser = await _userManager.GetUserAsync(User);
+            if (currentUser != null)
+            {
+              currentUserId = currentUser.Id;
+              currentUserEmail = currentUser.Email;
+
+              // Obtener feedback existente para este post y usuario
+              feedback = await _context.Feedbacks
+                  .AsNoTracking()
+                  .FirstOrDefaultAsync(f => f.PostId == id && f.userId == currentUserId);
+            }
+          }
+          catch (Exception ex)
+          {
+            _logger.LogWarning(ex, "Error al obtener información del usuario actual");
+            // No fallar la página completa por esto
+          }
+        }
+
         // Pasar datos a la vista
         ViewBag.User = user;
         ViewBag.Comments = comments;
         ViewBag.Feedback = feedback;
-        return View(post); // El modelo principal sigue siendo el post
+        ViewBag.IsAuthenticated = User.Identity.IsAuthenticated;
+        ViewBag.CurrentUserEmail = currentUserEmail;
+
+        return View(post);
       }
       catch (Exception ex)
       {
@@ -83,70 +118,124 @@ namespace PC3.Controllers
         return View("Error");
       }
     }
-    [HttpPost]
 
+    [HttpPost]
+    [Authorize] // Requiere autenticación
+    [ValidateAntiForgeryToken] // Previene ataques CSRF
     public async Task<IActionResult> AddFeedback(int postId, string sentimiento)
     {
+      if (postId <= 0)
+      {
+        _logger.LogWarning($"PostId inválido: {postId}");
+        return BadRequest("ID de post inválido");
+      }
+
+      if (string.IsNullOrWhiteSpace(sentimiento) ||
+          (sentimiento != "like" && sentimiento != "dislike"))
+      {
+        _logger.LogWarning($"Sentimiento no válido: {sentimiento}");
+        TempData["FeedbackError"] = "Tipo de feedback no válido";
+        return RedirectToAction("Details", new { id = postId });
+      }
+
       try
       {
         var currentUser = await _userManager.GetUserAsync(User);
         if (currentUser == null)
         {
-          TempData["FeedbackError"] = "Debes iniciar sesión para dejar feedback sino haz iniciado sesion registrate";
+          _logger.LogWarning("Usuario autenticado pero no encontrado en UserManager");
+          TempData["FeedbackError"] = "Error de sesión. Por favor, inicia sesión nuevamente.";
           return RedirectToAction("Details", new { id = postId });
-
         }
 
-        if (sentimiento != "like" && sentimiento != "dislike")
+        // Verificar si ya votó usando transacción para evitar condiciones de carrera
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
         {
-          _logger.LogWarning($"Sentimiento no válido: {sentimiento}");
-          return BadRequest("Tipo de feedback no válido");
-        }
+          var existingFeedback = await _context.Feedbacks
+              .FirstOrDefaultAsync(f => f.PostId == postId && f.userId == currentUser.Id);
 
-        // Verificar si ya votó
-        var existingFeedback = await _context.Feedbacks
-            .FirstOrDefaultAsync(f => f.PostId == postId && f.userId == currentUser.Id);
-
-        if (existingFeedback != null)
-        {
-          TempData["FeedbackError"] = "Ya has votado tu Feedback en este post";
-        }
-        else
-        {
-          var feedback = new Feedback
+          if (existingFeedback != null)
           {
-            userId = currentUser.Id,
-            email = currentUser.Email,
-            PostId = postId,
-            Sentimiento = sentimiento,
-            Fecha = DateTime.UtcNow
-          };
-          _context.Feedbacks.Add(feedback);
-          _logger.LogInformation($"Nuevo feedback creado para post {postId}");
-        }
+            TempData["FeedbackError"] = "Ya has votado tu Feedback en este post";
+            _logger.LogInformation($"Usuario {currentUser.Email} intentó votar duplicado en post {postId}");
+          }
+          else
+          {
+            var feedback = new Feedback
+            {
+              userId = currentUser.Id,
+              email = currentUser.Email ?? "sin-email",
+              PostId = postId,
+              Sentimiento = sentimiento,
+              Fecha = DateTime.UtcNow
+            };
 
-        await _context.SaveChangesAsync();
-        TempData["FeedbackSuccess"] = "¡Gracias por tu feedback!";
+            _context.Feedbacks.Add(feedback);
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            TempData["FeedbackSuccess"] = "¡Gracias por tu feedback!";
+            _logger.LogInformation($"Nuevo feedback creado para post {postId} por usuario {currentUser.Email}");
+          }
+        }
+        catch
+        {
+          await transaction.RollbackAsync();
+          throw;
+        }
+      }
+      catch (DbUpdateException ex)
+      {
+        _logger.LogError(ex, $"Error de base de datos al guardar feedback para post {postId}");
+        TempData["FeedbackError"] = "Error al guardar tu feedback. Inténtalo nuevamente.";
       }
       catch (Exception ex)
       {
-        _logger.LogError(ex, "Error inesperado al guardar feedback");
-        TempData["FeedbackError"] = "Ocurrió un error inesperado";
+        _logger.LogError(ex, $"Error inesperado al guardar feedback para post {postId}");
+        TempData["FeedbackError"] = "Ocurrió un error inesperado. Inténtalo nuevamente.";
       }
 
       return RedirectToAction("Details", new { id = postId });
     }
 
-    public IActionResult ListarFeedback()
+    [Authorize] // Solo usuarios autenticados pueden ver feedbacks
+    public async Task<IActionResult> ListarFeedback()
     {
-      var feedbacks = _context.Feedbacks.ToList();
-      return View(feedbacks);
+      try
+      {
+        var feedbacks = await _context.Feedbacks
+            .AsNoTracking()
+            .OrderByDescending(f => f.Fecha)
+            .ToListAsync();
+
+        return View(feedbacks);
+      }
+      catch (Exception ex)
+      {
+        _logger.LogError(ex, "Error al obtener lista de feedbacks");
+        return View("Error");
+      }
+    }
+
+    // Acción para verificar el estado de autenticación (útil para AJAX)
+    [HttpGet]
+    public IActionResult CheckAuthStatus()
+    {
+      return Json(new
+      {
+        isAuthenticated = User.Identity.IsAuthenticated,
+        userName = User.Identity.Name
+      });
     }
 
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult Error()
     {
-      return View("Error!");
+      return View(new ErrorViewModel
+      {
+        RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier
+      });
     }
   }
 }
