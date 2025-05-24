@@ -3,9 +3,25 @@
     ViewData["Title"] = Model?.title ?? "Detalles del Post";
     var user = ViewBag.User as User;
     var comments = ViewBag.Comments as List<Comment> ?? new List<Comment>();
+    var feedback = ViewBag.Feedback as Feedback;
 }
 
 <div class="container">
+  @if (TempData["FeedbackSuccess"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show mt-3" role="alert">
+            @TempData["FeedbackSuccess"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+    
+    @if (TempData["FeedbackError"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show mt-3" role="alert">
+            @TempData["FeedbackError"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
     <div class="row">
         <div class="col-md-8">
             <!-- Sección del Post -->
@@ -97,22 +113,32 @@
                     <h3 class="mb-0">Feedback</h3>
                 </div>
                 <div class="card-body">
-                    @if (Model != null)
+                    @if (feedback != null)
                     {
-                        <div class="feedback-buttons" data-postid="@Model.id">
-                            <button class="btn btn-outline-success btn-block like-btn mb-2">
-                                👍 Like
-                            </button>
-                            <button class="btn btn-outline-danger btn-block dislike-btn">
-                                👎 Dislike
-                            </button>
-                        </div>
+                        <p>Ya has dado tu opinión: <strong>@(feedback.Sentimiento == "like" ? "👍 Like" : "👎 Dislike")</strong></p>
+                        <p><small>@feedback.Fecha.ToString("g")</small></p>
                     }
                     else
                     {
-                        <div class="alert alert-warning">
-                            Feedback no disponible para este post.
-                        </div>
+                        <!-- Formulario para Like -->
+                        <form asp-action="AddFeedback" method="post" class="d-inline">
+                            
+                            <input type="hidden" name="postId" value="@Model.id" />
+                            <input type="hidden" name="sentimiento" value="like" />
+                            <button type="submit" class="btn btn-outline-success btn-block mb-2">
+                                👍 Like
+                            </button>
+                        </form>
+
+                        <!-- Formulario para Dislike -->
+                        <form asp-action="AddFeedback" method="post" class="d-inline">
+                           
+                            <input type="hidden" name="postId" value="@Model.id" />
+                            <input type="hidden" name="sentimiento" value="dislike" />
+                            <button type="submit" class="btn btn-outline-danger btn-block">
+                                👎 Dislike
+                            </button>
+                        </form>
                     }
                 </div>
             </div>
@@ -146,15 +172,18 @@
         $(document).ready(function() {
             $('.feedback-buttons').on('click', '.like-btn, .dislike-btn', function() {
                 var postId = $(this).closest('.feedback-buttons').data('postid');
-                var action = $(this).hasClass('like-btn') ? 'like' : 'dislike';
-                
-                $.post('/Posts/AddFeedback', { postId: postId, action: action })
-                    .done(function() {
-                        alert('¡Gracias por tu feedback!');
-                    })
-                    .fail(function() {
-                        alert('Error al enviar tu feedback');
-                    });
+                var sentimiento = $(this).hasClass('like-btn') ? 'like' : 'dislike';
+                var button = $(this);
+
+                $.post('@Url.Action("AddFeedback", "Posts")', { postId: postId, sentimiento: sentimiento }, function(response) {
+                    if (response.success) {
+                        location.reload(); // Recargar para mostrar el feedback
+                    } else {
+                        alert(response.message);
+                    }
+                }).fail(function() {
+                    alert('Error al enviar el feedback');
+                });
             });
         });
     </script>

@@ -18,14 +18,7 @@
                         <a href="@Url.Action("Details", new { id = post.id })" class="btn btn-primary">Ver más</a>
                     </div>
                     <div class="card-footer bg-transparent">
-                        <div class="feedback-buttons" data-postid="@post.id">
-                            <button class="btn btn-outline-success like-btn" @(ViewBag.HasFeedback != null && ViewBag.HasFeedback ? "disabled" : "")>
-                                👍 Like
-                            </button>
-                            <button class="btn btn-outline-danger dislike-btn" @(ViewBag.HasFeedback != null && ViewBag.HasFeedback ? "disabled" : "")>
-                                👎 Dislike
-                            </button>
-                        </div>
+                        
                     </div>
                 </div>
             </div>
@@ -34,25 +27,5 @@
 </div>
 
 @section Scripts {
-    <script>
-        $(document).ready(function() {
-            $('.feedback-buttons').on('click', '.like-btn, .dislike-btn', function() {
-                var postId = $(this).closest('.feedback-buttons').data('postid');
-                var sentimiento = $(this).hasClass('like-btn') ? 'like' : 'dislike';
-                var button = $(this);
-
-                $.post('@Url.Action("AddFeedback", "Posts")', { postId: postId, sentimiento: sentimiento }, function(response) {
-                    if (response.success) {
-                        button.addClass('active').siblings().addClass('disabled');
-                        button.closest('.feedback-buttons').find('button').prop('disabled', true);
-                        alert('¡Gracias por tu feedback!');
-                    } else {
-                        alert(response.message);
-                    }
-                }).fail(function() {
-                    alert('Error al enviar el feedback');
-                });
-            });
-        });
-    </script>
+    
 }
