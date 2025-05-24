@@ -1,0 +1,161 @@
+@model Post
+@{
+    ViewData["Title"] = Model?.title ?? "Detalles del Post";
+    var user = ViewBag.User as User;
+    var comments = ViewBag.Comments as List<Comment> ?? new List<Comment>();
+}
+
+<div class="container">
+    <div class="row">
+        <div class="col-md-8">
+            <!-- Sección del Post -->
+            <article class="card mb-4">
+                <div class="card-body">
+                    @if (Model != null)
+                    {
+                        <h1 class="card-title">@Model.title</h1>
+                        <p class="card-text">@Model.body</p>
+                    }
+                    else
+                    {
+                        <div class="alert alert-danger">
+                            El post solicitado no está disponible.
+                        </div>
+                    }
+                </div>
+            </article>
+
+            <!-- Sección del Autor -->
+            <section class="card mb-4">
+                <div class="card-header">
+                    <h3>Autor</h3>
+                </div>
+                <div class="card-body">
+                    @if (user != null)
+                    {
+                        <div class="media">
+                            <div class="media-body">
+                                <h5 class="mt-0">@user.Name</h5>
+                                <p>Email: @user.Email</p>
+                                <p>Teléfono: @user.Phone</p>
+                                
+                                @if (!string.IsNullOrEmpty(user.Website))
+                                {
+                                    <p>Sitio web: <a href="http://@user.Website" target="_blank" rel="noopener noreferrer">@user.Website</a></p>
+                                }
+                                
+                                @if (user.Company != null)
+                                {
+                                    <p>Empresa: @user.Company.Name</p>
+                                    <p class="text-muted">@user.Company.CatchPhrase</p>
+                                }
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning">
+                            Información del autor no disponible.
+                        </div>
+                    }
+                </div>
+            </section>
+
+            <!-- Sección de Comentarios -->
+            <section class="card mb-4">
+                <div class="card-header">
+                    <h3>Comentarios (@comments.Count)</h3>
+                </div>
+                <div class="card-body">
+                    @if (comments.Any())
+                    {
+                        foreach (var comment in comments)
+                        {
+                            <div class="media mb-3">
+                                <div class="media-body">
+                                    <h5 class="mt-0">@comment.Name</h5>
+                                    <p><small class="text-muted">@comment.Email</small></p>
+                                    <p>@comment.Body</p>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="alert alert-info">
+                            No hay comentarios para este post.
+                        </div>
+                    }
+                </div>
+            </section>
+        </div>
+
+        <!-- Sidebar de Feedback -->
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">Feedback</h3>
+                </div>
+                <div class="card-body">
+                    @if (Model != null)
+                    {
+                        <div class="feedback-buttons" data-postid="@Model.id">
+                            <button class="btn btn-outline-success btn-block like-btn mb-2">
+                                👍 Like
+                            </button>
+                            <button class="btn btn-outline-danger btn-block dislike-btn">
+                                👎 Dislike
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning">
+                            Feedback no disponible para este post.
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Sección de Información Adicional -->
+            @if (user?.Address != null)
+            {
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h3>Dirección</h3>
+                    </div>
+                    <div class="card-body">
+                        <p>@user.Address.Street</p>
+                        <p>@user.Address.Suite</p>
+                        <p>@user.Address.City, @user.Address.Zipcode</p>
+                        @if (user.Address.Geo != null)
+                        {
+                            <p class="text-muted">
+                                Coordenadas: @user.Address.Geo.Lat, @user.Address.Geo.Lng
+                            </p>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            $('.feedback-buttons').on('click', '.like-btn, .dislike-btn', function() {
+                var postId = $(this).closest('.feedback-buttons').data('postid');
+                var action = $(this).hasClass('like-btn') ? 'like' : 'dislike';
+                
+                $.post('/Posts/AddFeedback', { postId: postId, action: action })
+                    .done(function() {
+                        alert('¡Gracias por tu feedback!');
+                    })
+                    .fail(function() {
+                        alert('Error al enviar tu feedback');
+                    });
+            });
+        });
+    </script>
+}
