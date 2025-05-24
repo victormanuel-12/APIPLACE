@@ -1,0 +1,58 @@
+@model List<Post>
+
+@{
+    ViewData["Title"] = "Todos los Posts";
+}
+
+<div class="container">
+    <h1 class="my-4">@ViewData["Title"]</h1>
+    
+    <div class="row">
+        @foreach (var post in Model)
+        {
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">@post.title</h5>
+                        <p class="card-text">@post.body.Substring(0, Math.Min(post.body.Length, 100))...</p>
+                        <a href="@Url.Action("Details", new { id = post.id })" class="btn btn-primary">Ver más</a>
+                    </div>
+                    <div class="card-footer bg-transparent">
+                        <div class="feedback-buttons" data-postid="@post.id">
+                            <button class="btn btn-outline-success like-btn" @(ViewBag.HasFeedback != null && ViewBag.HasFeedback ? "disabled" : "")>
+                                👍 Like
+                            </button>
+                            <button class="btn btn-outline-danger dislike-btn" @(ViewBag.HasFeedback != null && ViewBag.HasFeedback ? "disabled" : "")>
+                                👎 Dislike
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            $('.feedback-buttons').on('click', '.like-btn, .dislike-btn', function() {
+                var postId = $(this).closest('.feedback-buttons').data('postid');
+                var sentimiento = $(this).hasClass('like-btn') ? 'like' : 'dislike';
+                var button = $(this);
+
+                $.post('@Url.Action("AddFeedback", "Posts")', { postId: postId, sentimiento: sentimiento }, function(response) {
+                    if (response.success) {
+                        button.addClass('active').siblings().addClass('disabled');
+                        button.closest('.feedback-buttons').find('button').prop('disabled', true);
+                        alert('¡Gracias por tu feedback!');
+                    } else {
+                        alert(response.message);
+                    }
+                }).fail(function() {
+                    alert('Error al enviar el feedback');
+                });
+            });
+        });
+    </script>
+}
